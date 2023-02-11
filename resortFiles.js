@@ -163,10 +163,16 @@ async function moveAndMergeDir (destDir, fileObj) {
   if (!dirExistMap[destDir]) {
     if (!fs.existsSync(destDir)) {
       await fsP.rename(myDir, destDirPath)
+      dirExistMap[destDir] = true
+    } else {
+      dirExistMap[destDir] = true
+      await merge()
     }
-    dirExistMap[destDir] = true
   } else {
+    await merge()
+  }
 
+  async function merge () {
     if (!dirChildrenMd5[destDirPath]) {
       dirChildrenMd5[destDirPath] = []
     }
