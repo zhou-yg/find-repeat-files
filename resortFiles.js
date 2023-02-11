@@ -158,10 +158,10 @@ function isDateDir(dir) {
 async function moveAndMergeDir (destDir, fileObj) {
   const myDir = fileObj.path
   const fileName = path.basename(myDir)
-  const destDirPath = path.join(destDir, fileName)
+  const destDirPath = destDir
 
   if (!dirExistMap[destDir]) {
-    if (!fs.existsSync(destDirPath)) {
+    if (!fs.existsSync(destDir)) {
       await fsP.rename(myDir, destDirPath)
     }
     dirExistMap[destDir] = true
@@ -175,7 +175,7 @@ async function moveAndMergeDir (destDir, fileObj) {
 
     for (const child of fileObj.childrenMD5) {
       if (child.dir) {
-        await moveAndMergeDir(destDirPath, child)
+        await moveAndMergeDir(path.join(destDirPath, child.name), child)
         destDirChildrenMD5.push(...child.childrenMD5.map(f => f.md5))
       } else {
         if (destDirChildrenMD5.includes(child.md5)) {
