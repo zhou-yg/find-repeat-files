@@ -158,11 +158,11 @@ function isDateDir(dir) {
 async function moveAndMergeDir (destDir, fileObj) {
   const myDir = fileObj.path
   const fileName = path.basename(myDir)
-  const destDirPath = destDir
 
   if (!dirExistMap[destDir]) {
     if (!fs.existsSync(destDir)) {
-      await fsP.rename(myDir, destDirPath)
+      await fsP.rename(myDir, destDir)
+      dirChildrenMd5[destDir] = fileObj.childrenMD5.map(f => f.md5)
       dirExistMap[destDir] = true
     } else {
       dirExistMap[destDir] = true
@@ -173,23 +173,22 @@ async function moveAndMergeDir (destDir, fileObj) {
   }
 
   async function merge () {
-    if (!dirChildrenMd5[destDirPath]) {
-      dirChildrenMd5[destDirPath] = []
+    if (!dirChildrenMd5[destDir]) {
+      dirChildrenMd5[destDir] = []
     }
     // 合并文件夹
-    const destDirChildrenMD5 = dirChildrenMd5[destDirPath]
+    const destDirChildrenMD5 = dirChildrenMd5[destDir]
 
     for (const child of fileObj.childrenMD5) {
       if (child.dir) {
-        console.log('child: ', child);
-        await moveAndMergeDir(path.join(destDirPath, child.name), child)
+        await moveAndMergeDir(path.join(destDir, child.name), child)
         destDirChildrenMD5.push(...child.childrenMD5.map(f => f.md5))
       } else {
         if (destDirChildrenMD5.includes(child.md5)) {
           await moveToDest(duplicateDir, child.path)
         } else {
           destDirChildrenMD5.push(child.md5)
-          await moveToDest(destDirPath, child.path)
+          await moveToDest(destDir, child.path)
         }
       }
     }
