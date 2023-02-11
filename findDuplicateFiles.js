@@ -2,8 +2,10 @@ const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 
+const duplicateDirName = 'the_duplicates'
+
 const targetDir = path.join(__dirname, './test')
-const repeatDir = path.join(targetDir, '../the_duplicates')
+const repeatDir = path.join(targetDir, `./${duplicateDirName}`)
 
 if (!fs.existsSync(repeatDir)) {
   fs.mkdirSync(repeatDir)
@@ -117,7 +119,14 @@ function traverseDirs (p)  {
   })
 }
 
-traverseDirs(targetDir)
+fs.readdirSync(targetDir).forEach(f => {
+  if (
+    !/^the_/.test(f) &&
+    fs.lstatSync(path.join(targetDir, f)).isDirectory()
+  ) {
+    traverseDirs(path.join(targetDir, f))
+  }
+})
 
 process.on('exit', () => {
   console.log('allFileCount: ', allFileCount);
