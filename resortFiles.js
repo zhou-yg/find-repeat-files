@@ -140,7 +140,7 @@ async function getChildrenMD5 (dir) {
         dir: false,
         name: f,
         path: fp,
-        md5: getMD5(fp)
+        md5: await getMD5(fp)
       }
     }
   }))).filter(Boolean)
