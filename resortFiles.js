@@ -184,6 +184,8 @@ async function moveAndMergeDir (destDir, fileObj) {
         await moveAndMergeDir(path.join(destDir, child.name), child)
         destDirChildrenMD5.push(...child.childrenMD5.map(f => f.md5))
       } else {
+        console.log('destDir ', destDir);
+        console.log('child.path: ', child.path, destDirChildrenMD5.includes(child.md5));
         if (destDirChildrenMD5.includes(child.md5)) {
           await moveToDest(duplicateDir, child.path)
         } else {
