@@ -11,8 +11,8 @@ const rl = readline.createInterface({ input: stdin, output: stdout });
 const duplicateDirName = 'the_duplicates'
 const exportDirName = 'the_exports'
 
-const entryDir = path.join(__dirname, './test')
-// const entryDir = '/Volumes/Seagate Basic/所有照片'
+// const entryDir = path.join(__dirname, './test')
+const entryDir = '/Volumes/Seagate Basic/所有照片'
 
 const exportDir = path.join(entryDir, exportDirName)
 const duplicateDir = path.join(entryDir, duplicateDirName)
@@ -48,16 +48,35 @@ traverse(entryDir, allFiles).then(async (r) => {
     st = Date.now()
 
     let fi = 0
-    for (const file of allFiles) {
-      console.log(`${fi++}. move file: `, file.path);
 
-      await vfs.moveTo(
-        path.join(exportDir, file.birthTimeStr),
-        file
-      )
+    let T_MAX = 1000
+
+    let queue = []
+
+    for (const file of allFiles) {
+      if (queue.length < T_MAX) {
+        queue.push(async () => {
+          let cur = fi++
+          const cst = Date.now()
+          console.log(`${cur}. move file: `, file.path);
+          await vfs.moveTo(
+            path.join(exportDir, file.birthTimeStr),
+            file
+          )    
+          console.log(`${cur}. move file end: `, file.path, `${(Date.now() - cst) / 1000}s`);
+        })
+      } else {
+        await Promise.all(queue.map(fn => fn()))
+        console.log(`${fi}.vfs info: created ${vfs.createdFiles.length}, duplicates ${vfs.duplicates.length}, cost ${ (Date.now() - st)/1000 } s`)
+        console.log(`${fi}.vfs info2: duplicates ${vfs.duplicatesSize()}, cost ${ (Date.now() - st)/1000 } s`)
+    
+        queue = []
+      }
     }
+    await Promise.all(queue.map(fn => fn()))
 
     console.log(`vfs info: created ${vfs.createdFiles.length}, duplicates ${vfs.duplicates.length}, cost ${ (Date.now() - st)/1000 } s`)
+    console.log(`vfs info2: duplicates ${vfs.duplicatesSize()}, cost ${ (Date.now() - st)/1000 } s`)
 
     st = Date.now()
     const answer2 = await rl.question('do write right now ? (yes/no) : ')
@@ -74,6 +93,12 @@ class VirtualFS {
   createdFiles = []
   constructor (allFiles) {
     this.allFiles = allFiles.slice()
+  }
+
+  duplicatesSize () {
+    return this.duplicates.reduce((p, n) => {
+      return p + n.sizeMB
+    }, 0)
   }
 
   mkdir (path) {
@@ -149,38 +174,53 @@ class VirtualFS {
 
     await fileObj.getMD5Async() 
     
-    const children = this.getChildrenFiles(destDir)
+    let children, syncMode;
+    
+    do {
+      children = this.getChildrenFiles(destDir)
+      syncMode = children.every(fo => fo.md5)
+      if (!syncMode) {
+        await Promise.all(children.map(fo => fo.getMD5Async()))
+      }
+    } while (!syncMode)
 
-    await Promise.all(children.map(fo => fo.getMD5Async()))
     const existFile = children.find(fo => fo.md5 === fileObj.md5)
 
     const newFileObj = new FileObj(
       path.join(destDir, fileObj.relativePath),
-      fileObj.path
+      fileObj
     )
-    await newFileObj.init()
-    if (existFile) {
-      this.duplicates.push(newFileObj)
-    } else {
-      this.createdFiles.push(newFileObj)
+    if (syncMode) {
+      if (existFile) {
+        this.duplicates.push(newFileObj)
+      } else {
+        this.createdFiles.push(newFileObj)
+      }
     }
   }
 }
 
 
 class FileObj {
+  path = ''
+  pathArr = []
+
   md5 = null
   md5Promise = null
-  path = ''
-  birthTimeStr = ''
-  pathArr = []
-  
+  birthTimeStr = ''  
   sourceFilePath = null
+  sizeMB = 0
 
-  constructor (fileOrDir, source) {
+  constructor (fileOrDir, sourceFileObj) {
     this.path = fileOrDir
     this.pathArr = fileOrDir.split('/').filter(Boolean)
-    this.sourceFilePath = source
+
+    if (sourceFileObj) {
+      ['sizeMB', 'md5', 'birthTimeStr'].forEach(k => {
+        this[k] = sourceFileObj[k]
+      })
+      this.sourceFilePath = sourceFileObj.path
+    }
   }
 
   readablePath () {
@@ -201,6 +241,8 @@ class FileObj {
   }
 
   init (stat) {
+    this.sizeMB = stat.size / 1000 / 1000
+
     this.pathArr.some((pn, i) => {
       if (isDateDir(pn)) {
         this.birthTimeStr = pn
