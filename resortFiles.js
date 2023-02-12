@@ -3,14 +3,22 @@ const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('crypto')
 
+const readline = require('node:readline/promises');
+const { stdin, stdout } = require('node:process');
+
+const rl = readline.createInterface({ input: stdin, output: stdout });
+
 const duplicateDirName = 'the_duplicates'
 const exportDirName = 'the_exports'
 
-const entryDir = path.join(__dirname, './test/')
+const entryDir = '/Volumes/Seagate Basic/所有照片'
 
-const exportDir = path.join(__dirname, './test/', exportDirName)
-const duplicateDir = path.join(__dirname, './test/', duplicateDirName)
+const exportDir = path.join(entryDir, exportDirName)
+const duplicateDir = path.join(entryDir, duplicateDirName)
 
+if (!fs.existsSync(duplicateDir)) {
+  fs.mkdirSync(duplicateDir)
+}
 if (!fs.existsSync(exportDir)) {
   fs.mkdirSync(exportDir)
 }
@@ -42,35 +50,54 @@ const dirChildrenMd5 = {
 }
 
 
+let i = 1;
+
 traverse(entryDir).then(async () => {
   console.log(`allFiles: ${allFiles.length}`)
-  console.log('allFiles: ', allFiles);
 
-  for (const fileObj of allFiles) {
-    const dest = path.join(exportDir, fileObj.birthTimeStr)
+  const answer = await rl.question('do right now? ');
+  rl.close()
+  if (answer === 'yes') {
 
-    if (!dirChildrenMd5[dest]) {
-      dirChildrenMd5[dest] = []
-    }
+    const st = Date.now()
 
-    if (fileObj.dir) {
-      await moveAndMergeDir(dest, fileObj)
-      dirChildrenMd5[dest] = [...new Set([
-        dirChildrenMd5[dest],
-        ...fileObj.childrenMD5.map(f => f.md5),
-      ])]
-    } else {
-      const childrenMD5 = dirChildrenMd5[dest]
-      if (childrenMD5.includes(fileObj.md5)) {
-        // duplicate
-        await moveToDest(duplicateDir, fileObj.path)
+    console.log('start moving')
+
+
+    for (const fileObj of allFiles) {
+      const dest = path.join(exportDir, fileObj.birthTimeStr)
+  
+      if (!dirChildrenMd5[dest]) {
+        dirChildrenMd5[dest] = []
+      }
+  
+      if (fileObj.dir) {
+        await moveAndMergeDir(dest, fileObj)
+        dirChildrenMd5[dest] = [...new Set([
+          dirChildrenMd5[dest],
+          ...fileObj.childrenMD5.map(f => f.md5),
+        ])]
+        console.log(`complete ${i++}, cost ${Date.now() - st}ms, merge dir: ${fileObj.path}}`)
       } else {
-        childrenMD5.push(fileObj.md5)
-        await moveToDest(dest, fileObj.path)
+        const childrenMD5 = dirChildrenMd5[dest]
+        if (childrenMD5.includes(fileObj.md5)) {
+          // duplicate
+          await moveToDest(duplicateDir, fileObj.path)
+          console.log(`complete ${i++}, cost ${Date.now() - st}ms, duplicate: ${fileObj.path}}`)
+        } else {
+          childrenMD5.push(fileObj.md5)
+          await moveToDest(dest, fileObj.path)
+          console.log(`complete ${i++}, cost ${Date.now() - st}ms, move: ${fileObj.path}}`)
+        }
       }
     }
   }
+}).catch(e => {
+  console.log('err: ', e);
 })
+
+
+let si = 0
 
 async function traverse (dir) {
   if (!validate(dir)) {
@@ -78,8 +105,13 @@ async function traverse (dir) {
   }
 
   const files = await fsP.readdir(dir)
-  await Promise.all(files.map(async (file) => {
+  
+  
+
+  for (const file of files) {
     const fileOrDir = path.join(dir, file)
+    console.log(`${si++} scan file: ${fileOrDir}`, )
+
     const stat = await fsP.stat(fileOrDir)
 
     const fileObj = {
@@ -106,7 +138,7 @@ async function traverse (dir) {
       fileObj.md5 = await getMD5(fileOrDir)
       allFiles.push(fileObj)
     }
-  }))
+  }
 }
 
 // compute md5
@@ -157,7 +189,6 @@ function isDateDir(dir) {
 
 async function moveAndMergeDir (destDir, fileObj) {
   const myDir = fileObj.path
-  const fileName = path.basename(myDir)
 
   if (!dirExistMap[destDir]) {
     if (!fs.existsSync(destDir)) {
